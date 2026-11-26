@@ -23,14 +23,19 @@ function TicketDetail() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [note, setNote] = useState("");
+  const [shownId, setShownId] = useState(id);
+
+  if (id !== shownId) {
+    setShownId(id);
+    setLoading(true);
+    setError("");
+  }
 
   useEffect(() => {
     let active = true;
-    setLoading(true);
-    setError("");
     Promise.allSettled([opsApi.getTicket(id), opsApi.listStaff({ limit: 100 })]).then(([ticketResult, staffResult]) => {
       if (!active) return;
-      if (ticketResult.status === "fulfilled") setTicket(ticketResult.value.data);
+      if (ticketResult.status === "fulfilled") { setTicket(ticketResult.value.data); setError(""); }
       else { setTicket(null); setError(ticketResult.reason?.message || "Unable to load ticket."); }
       if (staffResult.status === "fulfilled") setStaff(staffResult.value.data || []);
       setLoading(false);

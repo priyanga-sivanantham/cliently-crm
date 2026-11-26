@@ -20,7 +20,7 @@ router.post('/razorpay', express.raw({ type: 'application/json', limit: '100kb' 
     const entity = event?.payload?.payment?.entity
     if (!entity?.order_id || !entity?.id) return res.json({ received: true })
 
-    const payment = await Payment.findOne({ orderId: entity.order_id })
+    const payment = await Payment.findOne({ orderId: entity.order_id, serviceRequestId: { $ne: null } })
     if (!payment) return res.json({ received: true })
 
     if (event.event === 'payment.captured' || event.event === 'order.paid') {

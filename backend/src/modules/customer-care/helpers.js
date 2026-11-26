@@ -61,6 +61,9 @@ function formatRequest(r, { forCustomer = false } = {}) {
     assignedToName: r.assignedToName || null,
     scheduledDate: r.scheduledDate,
     completedAt: r.completedAt,
+    charge: r.charge || 0,
+    paymentStatus: r.paymentStatus || 'Not Required',
+    paidAt: r.paidAt || null,
     createdAt: r.createdAt,
     updates: (r.updates || []).map((u) => ({ status: u.status, note: u.note, byName: u.byName, at: u.at }))
   }

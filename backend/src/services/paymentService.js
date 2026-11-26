@@ -1,6 +1,6 @@
 const crypto = require('crypto')
 const Payment = require('../models/Payment')
-const Sale = require('../models/Sale')
+const ServiceRequest = require('../models/ServiceRequest')
 const AppError = require('../utils/AppError')
 
 const REUSE_PENDING_MS = 15 * 60 * 1000
@@ -37,26 +37,17 @@ function webhookSignatureMatches(rawBody, signature) {
   return safeEqualHex(expected, signature)
 }
 
-function balanceOf(sale) {
-  return Math.round((Number(sale.totalAmount || 0) - Number(sale.amountPaid || 0)) * 100) / 100
-}
-
-function isPaid(sale) {
-  return ['paid', 'success', 'completed'].includes(String(sale.paymentStatus || '').toLowerCase()) || balanceOf(sale) < 1
-}
-
-async function createOrderForSale(sale, customerRef) {
-  if (String(sale.saleStatus || '').toLowerCase() === 'cancelled') {
-    throw fail('This order was cancelled and cannot be paid.', 400, 'ORDER_CANCELLED')
+async function createOrderForRequest(request) {
+  if (request.status === 'Cancelled') throw fail('This request was cancelled', 400, 'REQUEST_CANCELLED')
+  if (request.paymentStatus === 'Paid') throw fail('This request is already paid', 400, 'ALREADY_PAID')
+  if (request.paymentStatus !== 'Unpaid' || !(request.charge >= 1)) {
+    throw fail('There is nothing to pay for this request', 400, 'NOTHING_TO_PAY')
   }
-  if (isPaid(sale)) throw fail('This order is already paid.', 400, 'ALREADY_PAID')
 
-  const amount = balanceOf(sale)
-
+  const amount = request.charge
   const recent = await Payment.findOne({
-    tenantId: sale.tenantId,
-    saleId: String(sale._id),
-    customerRef,
+    tenantId: request.tenantId,
+    serviceRequestId: request._id,
     status: 'Pending',
     amount,
     createdAt: { $gte: new Date(Date.now() - REUSE_PENDING_MS) }
@@ -67,19 +58,19 @@ async function createOrderForSale(sale, customerRef) {
   const order = await getRazorpay().orders.create({
     amount: Math.round(amount * 100),
     currency: 'INR',
-    receipt: `${sale.saleNumber || 'sale'}_${Date.now()}`.slice(0, 40),
+    receipt: `${request.requestNumber}_${Date.now()}`.slice(0, 40),
     notes: {
-      tenantId: String(sale.tenantId),
-      saleId: String(sale._id),
-      customerRef: String(customerRef)
+      tenantId: String(request.tenantId),
+      serviceRequestId: String(request._id),
+      requestNumber: request.requestNumber
     }
   })
 
   await Payment.create({
-    tenantId: sale.tenantId,
-    customerId: String(sale.customerId),
-    customerRef,
-    saleId: String(sale._id),
+    tenantId: request.tenantId,
+    customerId: String(request.customerId),
+    customerRef: request.customerId,
+    serviceRequestId: request._id,
     orderId: order.id,
     amount,
     currency: 'INR',
@@ -103,18 +94,17 @@ async function markPaid(payment, paymentId, verifiedBy) {
     return { alreadyDone: true, samePayment: current?.paymentId === paymentId }
   }
 
-  const sale = await Sale.findOneAndUpdate(
-    { _id: updated.saleId, tenantId: updated.tenantId },
-    { $inc: { amountPaid: updated.amount } },
-    { returnDocument: 'after' }
-  )
-
-  if (sale) {
-    const fullyPaid = balanceOf(sale) < 1
-    await Sale.updateOne(
-      { _id: sale._id },
-      { $set: { paymentStatus: fullyPaid ? 'Paid' : 'Partially Paid', ...(fullyPaid ? { paidAt } : {}) } }
-    )
+  const request = await ServiceRequest.findOne({ _id: updated.serviceRequestId, tenantId: updated.tenantId })
+  if (request && request.paymentStatus !== 'Paid') {
+    request.paymentStatus = 'Paid'
+    request.paidAt = paidAt
+    request.updates.push({
+      status: request.status,
+      note: `Payment of Rs ${updated.amount} received`,
+      byName: 'Payment',
+      byRole: 'SYSTEM'
+    })
+    await request.save()
   }
 
   return { alreadyDone: false, samePayment: true }
@@ -129,11 +119,9 @@ async function noteFailure(orderId, reason) {
 
 module.exports = {
   fail,
-  balanceOf,
-  isPaid,
   checkoutSignatureMatches,
   webhookSignatureMatches,
-  createOrderForSale,
+  createOrderForRequest,
   markPaid,
   noteFailure
 }

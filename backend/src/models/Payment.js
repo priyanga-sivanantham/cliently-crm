@@ -15,7 +15,7 @@ const paymentSchema = new mongoose.Schema(
     currency: { type: String, default: 'INR' },
     status: { type: String, enum: PAYMENT_STATUSES, default: 'Pending' },
     paymentMethod: { type: String, default: 'Razorpay' },
-
+    serviceRequestId: { type: ObjectId, ref: 'ServiceRequest', default: null },
     customerRef: { type: ObjectId, ref: 'Customer', default: null },
     verifiedBy: { type: String, enum: VERIFIED_BY },
     failureReason: { type: String, trim: true, maxlength: 300 },
@@ -30,6 +30,6 @@ paymentSchema.index(
 )
 paymentSchema.index({ tenantId: 1, saleId: 1, createdAt: -1 })
 paymentSchema.index({ tenantId: 1, status: 1, paidAt: -1 })
-
+paymentSchema.index({ tenantId: 1, serviceRequestId: 1, createdAt: -1 })
 module.exports = mongoose.model('Payment', paymentSchema)
 module.exports.PAYMENT_STATUSES = PAYMENT_STATUSES

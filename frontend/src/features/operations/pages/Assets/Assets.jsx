@@ -1,5 +1,4 @@
-
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import {
   Boxes,
@@ -65,6 +64,24 @@ function getAssignment(asset) {
   return "—";
 }
 
+async function fetchAssets(filters) {
+  try {
+    const response = await opsApi.listAssets({ ...filters, limit: 20 });
+    return {
+      assets: Array.isArray(response?.data) ? response.data : [],
+      pagination: response?.pagination || {
+        page: 1,
+        limit: 20,
+        total: response?.data?.length || 0,
+        pages: 1,
+      },
+      error: "",
+    };
+  } catch (err) {
+    return { assets: [], pagination: null, error: err?.message || "Unable to load assets." };
+  }
+}
+
 function StatusBadge({ status }) {
   const className = String(status || "")
     .toLowerCase()
@@ -94,6 +111,12 @@ export default function Assets() {
   );
 
   const [searchText, setSearchText] = useState(q);
+  const [lastQ, setLastQ] = useState(q);
+
+  if (q !== lastQ) {
+    setLastQ(q);
+    setSearchText(q);
+  }
   const [assets, setAssets] = useState([]);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -111,6 +134,15 @@ export default function Assets() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
   const [fieldErrors, setFieldErrors] = useState({});
+
+  const filterKey = [status, type, lowStock, q, sort, page].join("|");
+  const [loadedKey, setLoadedKey] = useState(filterKey);
+
+  if (filterKey !== loadedKey) {
+    setLoadedKey(filterKey);
+    setLoading(true);
+    setError("");
+  }
 
   const updateParams = useCallback(
     (updates) => {
@@ -147,10 +179,6 @@ export default function Assets() {
   );
 
   useEffect(() => {
-    setSearchText(q);
-  }, [q]);
-
-  useEffect(() => {
     const timer = setTimeout(() => {
       if (searchText.trim() !== q) {
         updateParams({ q: searchText.trim() });
@@ -160,44 +188,31 @@ export default function Assets() {
     return () => clearTimeout(timer);
   }, [searchText, q, updateParams]);
 
+  const applyResult = useCallback((result) => {
+    setAssets(result.assets);
+    if (result.pagination) setPagination(result.pagination);
+    setError(result.error);
+    setLoading(false);
+  }, []);
+
+  const filters = useMemo(
+    () => ({ status, type, lowStock: lowStock ? "true" : "", q, sort, page }),
+    [status, type, lowStock, q, sort, page]
+  );
+
   const loadAssets = useCallback(async () => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const response = await opsApi.listAssets({
-        status,
-        type,
-        lowStock: lowStock ? "true" : "",
-        q,
-        sort,
-        page,
-        limit: 20,
-      });
-
-      setAssets(
-        Array.isArray(response?.data) ? response.data : []
-      );
-
-      setPagination(
-        response?.pagination || {
-          page: 1,
-          limit: 20,
-          total: response?.data?.length || 0,
-          pages: 1,
-        }
-      );
-    } catch (err) {
-      setError(err?.message || "Unable to load assets.");
-      setAssets([]);
-    } finally {
-      setLoading(false);
-    }
-  }, [status, type, lowStock, q, sort, page]);
+    applyResult(await fetchAssets(filters));
+  }, [filters, applyResult]);
 
   useEffect(() => {
-    loadAssets();
-  }, [loadAssets]);
+    let active = true;
+    fetchAssets(filters).then((result) => {
+      if (active) applyResult(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [filters, applyResult]);
 
   useEffect(() => {
     if (!showCreate) return;
@@ -485,7 +500,14 @@ export default function Assets() {
         {error && (
           <div className="ops-assets-error" role="alert">
             {error}
-            <button type="button" onClick={loadAssets}>
+            <button
+              type="button"
+              onClick={() => {
+                setLoading(true);
+                setError("");
+                loadAssets();
+              }}
+            >
               Retry
             </button>
           </div>

@@ -3,7 +3,7 @@ const { ObjectId } = mongoose.Schema.Types
 
 const SERVICE_TYPES = ['Installation', 'Filter Change', 'Repair', 'Maintenance', 'Other']
 const REQUEST_STATUSES = ['Requested', 'Assigned', 'In Progress', 'Completed', 'Cancelled']
-
+const PAYMENT_STATUSES = ['Not Required', 'Unpaid', 'Paid']
 const updateSchema = new mongoose.Schema(
   {
     status: { type: String, enum: REQUEST_STATUSES, required: true },
@@ -32,6 +32,9 @@ const serviceRequestSchema = new mongoose.Schema(
     assignedToName: { type: String, default: '', trim: true },
     scheduledDate: { type: Date, default: null },
     completedAt: { type: Date, default: null },
+    charge: { type: Number, default: 0, min: 0 },
+    paymentStatus: { type: String, enum: PAYMENT_STATUSES, default: 'Not Required' },
+    paidAt: { type: Date, default: null },
     updates: { type: [updateSchema], default: [] }
   },
   { timestamps: true, versionKey: false, collection: 'service_requests' }
@@ -46,3 +49,4 @@ serviceRequestSchema.index({ tenantId: 1, status: 1, createdAt: -1 })
 module.exports = mongoose.model('ServiceRequest', serviceRequestSchema)
 module.exports.SERVICE_TYPES = SERVICE_TYPES
 module.exports.REQUEST_STATUSES = REQUEST_STATUSES
+module.exports.PAYMENT_STATUSES = PAYMENT_STATUSES

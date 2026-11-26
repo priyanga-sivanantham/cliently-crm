@@ -60,9 +60,12 @@ export default function TicketsList() {
   const [error, setError] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const [showNewTicket, setShowNewTicket] = useState(false);
+  const [lastQ, setLastQ] = useState(q);
 
-  useEffect(() => setSearchText(q), [q]);
-
+  if (q !== lastQ) {
+    setLastQ(q);
+    setSearchText(q);
+  }
   function updateParams(changes) {
     const next = new URLSearchParams(searchParams);
     Object.entries(changes).forEach(([key, value]) => {

@@ -1,5 +1,4 @@
-﻿
-import React, { useEffect, useState } from "react";
+﻿import { useState } from "react";
 import {
   UserRound,
   Mail,
@@ -13,26 +12,30 @@ import {
 } from "lucide-react";
 import "./OperationsProfile.css";
 
+function formFromUser(user) {
+  return {
+    name: user?.name || "Operations Staff",
+    phone: user?.phone || "",
+    department: "Operations",
+  };
+}
+
 function OperationsProfile({ user }) {
   const [editing, setEditing] = useState(false);
   const [saved, setSaved] = useState(null);
-  const [form, setForm] = useState({
-    name: "",
-    phone: "",
-    department: "Operations",
-  });
+  const [form, setForm] = useState(() => formFromUser(user));
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
+  const userKey = [user?.name, user?.phone, user?.email].join("|");
+  const [shownUserKey, setShownUserKey] = useState(userKey);
+
+  if (userKey !== shownUserKey) {
+    setShownUserKey(userKey);
     setSaved(null);
-    setForm({
-      name: user?.name || "Operations Staff",
-      phone: user?.phone || "",
-      department: "Operations",
-    });
+    setForm(formFromUser(user));
     setEditing(false);
     setMessage("");
-  }, [user?.name, user?.phone, user?.email]);
+  }
 
   const profile = saved || form;
 

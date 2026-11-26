@@ -1,6 +1,8 @@
 const Customer = require('../../../models/Customer')
 const ServiceRequest = require('../../../models/ServiceRequest')
 const { assignRequest } = require('./assignService')
+const { createCustomerRecord, detailsFromLead } = require('../customerFactory')
+const { inviteCustomer, inviteOrLink, inviteMessage, EMAIL_PATTERN } = require('../../../utils/portalInvite')
 const { OPEN_STATUSES, fail, checkId, findTeamUser, listTeam, formatRequest } = require('../helpers')
 
 async function listCustomers(req, res, next) {
@@ -95,4 +97,58 @@ async function listSalesExecs(req, res, next) {
   }
 }
 
-module.exports = { listCustomers, setSalesExec, listRequests, assign, listStaff, listSalesExecs }
+async function createFromLead(req, res, next) {
+  try {
+    const tenantId = req.user.tenantId
+    checkId(req.params.leadId, 'lead')
+    const exec = await findTeamUser(tenantId, req.body.salesExecId, 'SALES_EXECUTIVE', 'Sales executive')
+    const { lead, details } = await detailsFromLead(tenantId, req.params.leadId)
+
+    if (!EMAIL_PATTERN.test(details.email)) {
+      throw fail('This enquiry has no valid email address, so the login cannot be sent')
+    }
+    const sameEmail = await Customer.findOne({ tenantId, email: details.email }).select('customerCode').lean()
+    if (sameEmail) throw fail(`A customer with this email already exists (${sameEmail.customerCode})`, 409)
+
+    const customer = await createCustomerRecord({ tenantId, details, leadId: lead._id, salesExec: exec })
+    const invite = await inviteCustomer({ customer, issuedBy: req.user.id })
+
+    res.status(201).json({
+      message: inviteMessage(`Customer ${customer.customerCode} created and assigned to ${exec.name}.`, invite),
+      customer: {
+        id: customer._id,
+        customerCode: customer.customerCode,
+        name: customer.name,
+        email: customer.email,
+        salesExecName: customer.salesExecName
+      },
+      ...invite
+    })
+  } catch (err) {
+    next(err)
+  }
+}
+
+async function newPortalLink(req, res, next) {
+  try {
+    checkId(req.params.id, 'customer')
+    const customer = await Customer.findOne({ _id: req.params.id, tenantId: req.user.tenantId }).lean()
+    if (!customer) throw fail('Customer not found', 404)
+    const invite = await inviteOrLink({ customer, issuedBy: req.user.id })
+    res.json({ message: inviteMessage('New portal link created. It works for 48 hours.', invite), ...invite })
+  } catch (err) {
+    if (err.statusCode === 400) return next(fail(err.message, 400))
+    next(err)
+  }
+}
+
+module.exports = {
+  listCustomers,
+  setSalesExec,
+  listRequests,
+  assign,
+  listStaff,
+  listSalesExecs,
+  createFromLead,
+  newPortalLink
+}

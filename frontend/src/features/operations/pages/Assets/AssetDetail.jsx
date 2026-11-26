@@ -1,4 +1,3 @@
-
 import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import {
@@ -64,6 +63,18 @@ const initialEdit = (asset) => ({
   notes: asset.notes || "",
 });
 
+async function fetchAsset(id) {
+  try {
+    const response = await opsApi.getAsset(id);
+    const result = response?.data || response;
+    const found = result && typeof result === "object" && result._id ? result : null;
+    return { asset: found, notFound: !found, error: "" };
+  } catch (err) {
+    if (err?.status === 404) return { asset: null, notFound: true, error: "" };
+    return { asset: null, notFound: false, error: err?.message || "Unable to load asset." };
+  }
+}
+
 function AssetStatus({ status }) {
   const suffix = String(status || "")
     .toLowerCase()
@@ -97,33 +108,36 @@ export default function AssetDetail() {
   const [fieldErrors, setFieldErrors] = useState({});
   const [editError, setEditError] = useState("");
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [shownId, setShownId] = useState(id);
 
-  const loadAsset = useCallback(async () => {
+  if (id !== shownId) {
+    setShownId(id);
+    setAsset(null);
     setLoading(true);
     setError("");
     setNotFound(false);
+  }
 
-    try {
-      const response = await opsApi.getAsset(id);
-      const result = response?.data || response;
-      const found = result && typeof result === "object" && result._id ? result : null;
-      setAsset(found);
+  const applyResult = useCallback((result) => {
+    setAsset(result.asset);
+    setNotFound(result.notFound);
+    setError(result.error);
+    setLoading(false);
+  }, []);
 
-      if (!found) setNotFound(true);
-    } catch (err) {
-      if (err?.status === 404) {
-        setNotFound(true);
-      } else {
-        setError(err?.message || "Unable to load asset.");
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [id]);
+  const loadAsset = useCallback(async () => {
+    applyResult(await fetchAsset(id));
+  }, [id, applyResult]);
 
   useEffect(() => {
-    loadAsset();
-  }, [loadAsset]);
+    let active = true;
+    fetchAsset(id).then((result) => {
+      if (active) applyResult(result);
+    });
+    return () => {
+      active = false;
+    };
+  }, [id, applyResult]);
 
   useEffect(() => {
     let active = true;
@@ -364,7 +378,15 @@ export default function AssetDetail() {
             Back to Assets
           </button>
           {!notFound && (
-            <button onClick={loadAsset}>Retry</button>
+            <button
+              onClick={() => {
+                setLoading(true);
+                setError("");
+                loadAsset();
+              }}
+            >
+              Retry
+            </button>
           )}
         </div>
       </div>

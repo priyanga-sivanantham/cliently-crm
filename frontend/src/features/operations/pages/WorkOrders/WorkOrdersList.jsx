@@ -43,6 +43,12 @@ function WorkOrdersList() {
   const [error, setError] = useState("");
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [lastQ, setLastQ] = useState(q);
+
+  if (q !== lastQ) {
+    setLastQ(q);
+    setSearchText(q);
+  }
 
   const updateParam = useCallback((key, value) => {
     setParams(previous => {
@@ -54,7 +60,6 @@ function WorkOrdersList() {
     });
   }, [setParams]);
 
-  useEffect(() => setSearchText(q), [q]);
   useEffect(() => {
     if (searchText.trim() === q) return;
     const timer = setTimeout(() => updateParam("q", searchText.trim()), 350);

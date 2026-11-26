@@ -28,7 +28,7 @@ app.use(cors({
     'RateLimit-Remaining'
   ]
 }));
-
+app.use('/api/webhooks', require('./modules/webhooks/razorpayWebhook'))
 app.use(express.json());
 app.use(cookieParser());
 app.use(morgan('dev'));

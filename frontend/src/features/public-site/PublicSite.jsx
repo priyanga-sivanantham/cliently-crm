@@ -140,12 +140,12 @@ function EnquiryForm({ slug, products, form, setForm }) {
   const [errors, setErrors] = useState({});
   const [status, setStatus] = useState("idle");
   const [serverMessage, setServerMessage] = useState("");
+  const [lastProductId, setLastProductId] = useState(form.productId);
 
-  useEffect(() => {
-    if (form.productId) {
-      setStatus((current) => (current === "sent" ? "idle" : current));
-    }
-  }, [form.productId]);
+  if (form.productId !== lastProductId) {
+    setLastProductId(form.productId);
+    if (form.productId && status === "sent") setStatus("idle");
+  }
 
   function update(field, value) {
     setForm((current) => ({ ...current, [field]: value }));
@@ -357,7 +357,15 @@ export default function PublicSite() {
   const [category, setCategory] = useState("All");
   const [search, setSearch] = useState("");
   const [form, setForm] = useState(EMPTY_FORM);
+  const [shownSlug, setShownSlug] = useState(slug);
   const contactRef = useRef(null);
+
+  if (slug !== shownSlug) {
+    setShownSlug(slug);
+    setCategory("All");
+    setSearch("");
+    setForm(EMPTY_FORM);
+  }
 
   useEffect(() => {
     let active = true;
@@ -385,12 +393,6 @@ export default function PublicSite() {
     return () => {
       active = false;
     };
-  }, [slug]);
-
-  useEffect(() => {
-    setCategory("All");
-    setSearch("");
-    setForm(EMPTY_FORM);
   }, [slug]);
 
   const state = result.slug === slug ? result.status : "loading";

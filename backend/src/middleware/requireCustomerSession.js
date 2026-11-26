@@ -36,6 +36,7 @@ async function requireCustomerSession(req, res, next) {
     await service.touchActivity(session, now)
 
     req.customer = {
+      sessionId: session._id,
       accountId: account._id,
       customerId: customer._id,
       tenantId: tenant._id,

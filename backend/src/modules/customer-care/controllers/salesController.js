@@ -4,10 +4,9 @@ const User = require('../../../models/User')
 const CustomerAccount = require('../../../models/CustomerAccount')
 const CustomerProduct = require('../../../models/CustomerProduct')
 const ServiceRequest = require('../../../models/ServiceRequest')
-const Lead = require('../../../models/Lead')
 const Product = require('../../../models/Product')
-const nextSequence = require('../../../utils/nextSequence')
-const { issuePortalAccess } = require('../../../utils/customerAccess')
+const { inviteOrLink, inviteMessage } = require('../../../utils/portalInvite')
+const { createCustomerRecord, detailsFromLead } = require('../customerFactory')
 const { assignRequest } = require('./assignService')
 const { OPEN_STATUSES, fail, checkId, text, optionalDate, listTeam, formatRequest } = require('../helpers')
 
@@ -94,50 +93,24 @@ async function createCustomer(req, res, next) {
     const { tenantId, id: salesExecId } = req.user
     const salesExec = await User.findById(salesExecId).select('name').lean()
     let details = contactFields(req.body)
-    let lead = null
+    let leadId = null
 
     if (req.body.leadId) {
       checkId(req.body.leadId, 'lead')
-      lead = await Lead.findOne({ _id: req.body.leadId, tenantId }).lean()
-      if (!lead) throw fail('Lead not found', 404)
-      const existing = await Customer.findOne({ tenantId, leadId: lead._id }).select('customerCode').lean()
-      if (existing) throw fail(`This lead is already customer ${existing.customerCode}`, 409)
-      details = {
-        name: lead.name,
-        company: lead.company || '',
-        email: (lead.email || '').toLowerCase(),
-        phone: lead.phone || '',
-        ...details
-      }
+      const fromLead = await detailsFromLead(tenantId, req.body.leadId)
+      leadId = fromLead.lead._id
+      details = { ...fromLead.details, ...details }
     }
 
-    if (!details.name) throw fail('Customer name is required')
-
-    const seq = await nextSequence(`customer:${tenantId}`)
-    const customer = new Customer({
-      tenantId,
-      customerCode: `CUST-${String(seq).padStart(4, '0')}`,
-      ...details,
-      registrationDate: new Date().toISOString().slice(0, 10),
-      status: 'Active',
-      leadId: lead?._id || null,
-      salesExecId,
-      salesExecName: salesExec?.name || ''
-    })
-    customer.userId = String(customer._id)
-    await customer.save()
-
-    if (lead) await Lead.updateOne({ _id: lead._id, tenantId }, { $set: { status: 'Won' } })
-
-    const portal = await issuePortalAccess({ tenantId, customerId: customer._id, issuedBy: salesExecId })
+    const customer = await createCustomerRecord({ tenantId, details, leadId, salesExec })
+    const invite = await inviteOrLink({ customer, issuedBy: salesExecId })
 
     res.status(201).json({
-      message: `Customer ${customer.customerCode} created`,
-      customer: formatCustomer(customer, portal),
-      portal
+      message: inviteMessage(`Customer ${customer.customerCode} created.`, invite),
+      customer: formatCustomer(customer, invite.portal),
+      ...invite
     })
   } catch (err) {
-    if (err.code === 11000) return next(fail('This lead was just converted. Refresh and try again.', 409))
     next(err)
   }
 }
@@ -235,9 +208,10 @@ async function removeProduct(req, res, next) {
 async function newPortalLink(req, res, next) {
   try {
     const customer = await findMyCustomer(req, req.params.id)
-    const portal = await issuePortalAccess({ tenantId: customer.tenantId, customerId: customer._id, issuedBy: req.user.id })
-    res.json({ message: 'New portal link created. It works for 48 hours.', portal })
+    const invite = await inviteOrLink({ customer, issuedBy: req.user.id })
+    res.json({ message: inviteMessage('New portal link created. It works for 48 hours.', invite), ...invite })
   } catch (err) {
+    if (err.statusCode === 400) return next(fail(err.message, 400))
     next(err)
   }
 }

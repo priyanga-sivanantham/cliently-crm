@@ -1,5 +1,4 @@
-
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Link,
   useSearchParams,
@@ -83,6 +82,12 @@ export default function KnowledgeBase() {
 
   const [searchInput, setSearchInput] =
     useState(search);
+    const [lastSearch, setLastSearch] = useState(search);
+
+    if (search !== lastSearch) {
+      setLastSearch(search);
+      setSearchInput(search);
+    }
 
   const [articles, setArticles] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -97,30 +102,27 @@ export default function KnowledgeBase() {
   const [error, setError] = useState("");
   const [reloadKey, setReloadKey] = useState(0);
 
-  function updateFilters(updates) {
-    const next = new URLSearchParams(searchParams);
+  const updateFilters = useCallback(
+    (updates) => {
+      const next = new URLSearchParams(searchParams);
 
-    Object.entries(updates).forEach(([key, value]) => {
-      if (value === "" || value == null) {
-        next.delete(key);
-      } else {
-        next.set(key, String(value));
+      Object.entries(updates).forEach(([key, value]) => {
+        if (value === "" || value == null) {
+          next.delete(key);
+        } else {
+          next.set(key, String(value));
+        }
+      });
+
+      if (!Object.hasOwn(updates, "page")) {
+        next.delete("page");
       }
-    });
 
-    if (!Object.hasOwn(updates, "page")) {
-      next.delete("page");
-    }
+      setSearchParams(next);
+    },
+    [searchParams, setSearchParams]
+  );
 
-    setSearchParams(next);
-  }
-
-  // Keep input synchronized with browser navigation.
-  useEffect(() => {
-    setSearchInput(search);
-  }, [search]);
-
-  // Search after typing stops for 300 ms.
   useEffect(() => {
     if (searchInput === search) return;
 
@@ -129,7 +131,7 @@ export default function KnowledgeBase() {
     }, 300);
 
     return () => clearTimeout(timeout);
-  }, [searchInput, search]);
+  }, [searchInput, search, updateFilters]);
 
   // Load categories.
   useEffect(() => {
